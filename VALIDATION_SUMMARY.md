@@ -108,11 +108,13 @@ Therefore, ice-number concentrations can be closely matched while substantial di
 
 ## 6. Frozen-Phase Partitioning
 
-KiD partitions frozen condensate between:
+KiD includes frozen condensate categories for:
 
 - cloud ice
 - snow
 - graupel
+
+In the mixed1 comparison at z ≈ 400 m over 0–3600 s, graupel mass remained zero, so the relevant total frozen condensate is cloud ice + snow.
 
 At z ≈ 400 m, snow represents an important fraction of the frozen condensate.
 
