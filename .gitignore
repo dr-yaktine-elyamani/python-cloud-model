@@ -1,2 +1,14 @@
 __pycache__/
 *.pyc
+
+# Local Python environment
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary / backup files
+*.save
+*_backup.py
+*_before_sweeps.py
+*_pre_physics_fix.py
