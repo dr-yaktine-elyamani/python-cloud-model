@@ -1,1316 +1,673 @@
+# 🌥️ Warm-Cloud Two-Moment Parcel Microphysics
+
 ![Research Code](https://img.shields.io/badge/code-research-blueviolet.svg)
 ![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Status](https://img.shields.io/badge/status-research--prototype-orange.svg)
 
-# 🌥️ Python Cloud Parcel Model
-
 ## Overview
 
-This project explores warm cloud parcel microphysics using the KiD-A cloud parcel model.
+This repository contains an experimental Python framework for investigating cloud microphysical processes in a controlled parcel-model environment.
 
-The simulations investigate the temporal evolution of cloud water and rain water during warm cloud development.
+The current development focus is a **warm-cloud two-moment microphysics model** in which the prognostic cloud variables are:
 
-The model was compiled and executed on Ubuntu WSL using Fortran and NetCDF libraries.
+- cloud-droplet number concentration, `Nc` [m^-3]
+- cloud-water mixing ratio, `qc` [kg kg^-1]
 
-<p align="center">
-  <img src="cloud_parcel_animation.gif" width="700">
-</p>
+The framework includes aerosol activation, Maxwell-type condensational growth, supersaturation diagnostics, timestep and parameter-sensitivity experiments, an independent Abdul-Razzak et al. (1998) analytical activation benchmark, and diagnostic comparison with the KiD-A `warm1` case.
 
-## Abstract
+The repository also contains earlier exploratory warm-rain and mixed-phase experiments.
 
-This repository presents a physically based Python parcel model for investigating warm-cloud and mixed-phase microphysics. The framework combines Köhler activation, Maxwell-type condensational growth, biological ice nucleation, and vapour competition diagnostics to study the emergence of Bergeron–Findeisen behaviour. Direct comparison experiments with KiD benchmark simulations demonstrate that simplified physically motivated parameterisations can qualitatively reproduce key cloud microphysical behaviour under controlled forcing conditions.
-
-## What this project does
-
-This model simulates the ascent of an air parcel and shows how:
-- **cloud droplets form (Köhler activation)**
-- **ice crystals nucleate (biological IN)**
-- **vapour is shared between liquid and ice**
-- **mixed-phase clouds emerge naturally**
-
-## Key Insight
-
-Ice does not dominate automatically.
-
-- Ice-dominated behaviour **(R ≥ 1)** only appears when:
-- ice nucleation is strong enough
-- vapour competition becomes significant
-  
-This provides a physical explanation of the Bergeron–Findeisen process.
-
----
-
-## 📖 Scientific Context
-
-Mixed-phase clouds remain a major source of uncertainty in atmospheric science and climate modelling.
-Key unresolved processes include:
-
-- aerosol–cloud interactions  
-- biological ice nucleation  
-- vapour competition between droplets and ice  
-- sensitivity to updraft velocity  
-
-Parcel models provide a controlled framework to isolate these processes while maintaining physically consistent thermodynamics.
-This repository implements a **minimal but physically interpretable parcel model** that allows these interactions to emerge naturally.
-
----
-
-## ⚙️ Physical Framework
-
-These processes are represented mathematically in the governing equations below.
-The parcel model simulates the ascent of an air parcel with prescribed updraft velocity.
-Key physical components include:
-
-- **Aerosol Activation**
-Cloud droplet formation follows **Köhler theory**, allowing aerosols to activate when supersaturation exceeds the critical value.
-
-- **Biological Ice Nucleation**
-Ice nucleation is represented through a temperature-dependent biological IN parameterisation based on a logistic activation curve.
+> **Status:** This is a research prototype under development. The two-moment scheme is not yet a validated cloud microphysics parameterization.
 
 ---
 
 ## 🎯 Scientific Objectives
 
-The objectives of this project are:
+The current two-moment development aims to:
 
-- to investigate warm-cloud and mixed-phase parcel evolution
-- to study vapour competition between liquid droplets and ice crystals
-- to analyse the emergence of Bergeron–Findeisen behaviour
-- to compare simplified parcel-model physics against KiD benchmark experiments
-- to evaluate sensitivity to aerosol loading, updraft forcing, and ice nucleation
-
----
-  
-## 🧭 Scientific Workflow Summary
-
-The overall workflow of the parcel model is illustrated below.
-
-![Workflow](figures/workflow_diagram.png)
-
-*Figure: Workflow of the parcel model from simulation to diagnostics and visualisation.*
-
-Model → Simulation Output → Diagnostics → Figures
-
-- **Model**: computes parcel thermodynamics and microphysical evolution  
-- **Simulation Output**: results are saved as time-series data  
-- **Diagnostics**: derived quantities (e.g. supersaturation and vapour competition) are analysed  
-- **Figures**: visualisations are generated to interpret cloud evolution  
-
-![Scientific workflow](figures/scientific_workflow_summary.png)
-
-*Figure: Scientific workflow linking parcel ascent, supersaturation evolution, vapour competition, phase partitioning, and Bergeron–Findeisen transition analysis.*
-
-The modelling framework follows a physically connected sequence:
-
-Parcel ascent and dynamical forcing  
-→ supersaturation evolution (`Sw`, `Si`)  
-→ vapour competition diagnostics (`R_BF`)  
-→ liquid and ice phase partitioning  
-→ Bergeron–Findeisen transition analysis
-
-This framework enables investigation of how transient parcel dynamics influence vapour competition, mixed-phase evolution, and the emergence of ice-dominated behaviour in clouds.
+1. represent both cloud-droplet number and cloud-water mass;
+2. quantify aerosol activation rather than describe it only qualitatively;
+3. diagnose activation time, time to activation, activated fraction, and maximum supersaturation;
+4. investigate sensitivity to dynamical and aerosol parameters;
+5. test numerical timestep sensitivity;
+6. compare parcel activation behaviour with an independent analytical activation benchmark;
+7. investigate differences between the Python parcel model and KiD-A under carefully documented configurations.
 
 ---
 
-## 🌊 KiD-Inspired Dynamical Forcing
+# ☁️ Two-Moment Warm-Cloud Framework
 
-To improve consistency with parcel-model intercomparison frameworks, a time-dependent KiD-inspired updraft forcing was implemented.
+## Prognostic Cloud Moments
 
-The prescribed vertical velocity follows a sinusoidal evolution:
+The model predicts two cloud moments:
+
+```text
+Nc = cloud-droplet number concentration [m^-3]
+qc = cloud-water mixing ratio [kg kg^-1]
+
+```
+
+An equivalent-volume mean droplet radius is diagnosed from the two moments.
+
+For a monodisperse representation:
 
 ```math
-w(t) = w_{max} \sin\left(\frac{\pi t}{t_{forcing}}\right)
+r = \left(
+\frac{3 \rho_{air} q_c}
+{4 \pi \rho_w N_c}
+\right)^{1/3}
 ```
 
-where:
-
-- \(w_{max}\) is the maximum updraft velocity
-- \(t_{forcing}\) is the forcing duration
-
-This configuration provides a more realistic transient parcel ascent compared with constant forcing.
-
-### Example forcing evolution
-
-![KiD-inspired forcing](figures/kid_inspired_updraft.png)
-
-*Figure: Time-dependent KiD-inspired prescribed updraft forcing.*
+This provides a direct connection between droplet number, condensed-water mass, and characteristic droplet size.
 
 ---
 
-## 🧪 Effect of KiD-Inspired Forcing
+## 💧 Aerosol Activation
 
-A first alignment experiment using a KiD-inspired transient updraft forcing (`w_effective = 2.0 m/s`) was performed.
+Activation increases cloud-droplet number and transfers the corresponding seed-droplet mass from water vapour to cloud water.
 
-Compared with constant updraft forcing:
+Two parcel activation options are available for controlled experiments.
 
-- vapour competition was reduced
-- liquid water persisted for longer periods
-- ice growth weakened
-- the Bergeron–Findeisen transition was delayed or suppressed
+### `simple_kappa`
 
-These results demonstrate that transient parcel dynamics strongly influence mixed-phase cloud evolution.
+A simplified monodisperse κ-Köhler activation treatment.
 
-![Constant vs KiD forcing](figures/constant_vs_kid_R.png)
+### `lognormal_kohler`
 
-*Figure: Comparison of the Bergeron–Findeisen ratio \(R\) under constant and KiD-inspired forcing configurations.*
+A lognormal critical-supersaturation threshold treatment.
 
-![Constant vs KiD liquid and ice](figures/constant_vs_kid_liquid_ice.png)
+This option uses a distribution of aerosol critical supersaturations and allows progressive activation of an aerosol population.
 
-*Figure: Evolution of liquid-water and ice-water mass under constant and transient forcing.*
-
-![Constant vs KiD supersaturation](figures/constant_vs_kid_supersaturation.png)
-
-*Figure: Supersaturation evolution under constant and KiD-inspired forcing.*
-
-![BF transition timing](figures/BF_transition_timing.png)
-
-*Figure: Timing of the Bergeron–Findeisen transition for different forcing structures.*
-
-### Physical Interpretation
-
-Under constant forcing, continuous ascent sustains supersaturation and enhances vapour deposition onto ice crystals, producing strong vapour competition and eventual ice dominance (\(R \geq 1\)).
-
-In contrast, transient KiD-inspired forcing limits the duration of sustained ascent, reducing vapour competition and suppressing rapid ice growth.
-
-These experiments demonstrate that the temporal structure of dynamical forcing strongly controls supersaturation evolution, phase partitioning, and the emergence of Bergeron–Findeisen conditions.
-
-### Comparison of forcing configurations
-
-| Case | Forcing type | BF transition | Ice dominance | Main behaviour |
-|---|---|---|---|---|
-| Constant forcing | Constant updraft (`w = 1.0 m/s`) | Yes | Strong | Sustained vapour competition and strong ice growth |
-| KiD-inspired forcing | Transient prescribed forcing | No | Weak | Reduced vapour competition and delayed ice growth |
+It should **not** be interpreted as the complete Abdul-Razzak et al. (1998) analytical activation parameterization.
 
 ---
 
-## 🥇 Literature-Inspired Benchmark Starter Case
+# 📊 Activation Diagnostics
 
-A literature-inspired mixed-phase benchmark starter case was performed as an initial step toward future KiD-style validation experiments.
+The two-moment runner explicitly diagnoses:
 
-The simulation reproduces physically consistent mixed-phase behaviour, including:
+- first saturation time;
+- first activation time;
+- time from saturation to activation;
+- maximum supersaturation (`SSmax`);
+- time of maximum supersaturation;
+- final activated fraction;
+- final cloud-droplet number concentration;
+- cloud-water mixing ratio;
+- equivalent mean droplet radius;
+- total-water conservation error.
 
-- persistent supersaturation with respect to ice
-- gradual ice growth by vapour deposition
-- delayed Bergeron–Findeisen transition
-- persistent liquid water during transient ascent
-
-![Case 3 supersaturation](figures/case3_literature_benchmark_supersaturation.png)
-
-*Figure: Supersaturation evolution in the literature-inspired benchmark starter case.*
-
-![Case 3 liquid and ice](figures/case3_literature_benchmark_liquid_ice.png)
-
-*Figure: Liquid-water and ice-water evolution in the benchmark starter case.*
-
-![Case 3 Bergeron–Findeisen ratio](figures/case3_literature_benchmark_R.png)
-
-*Figure: Bergeron–Findeisen vapour competition diagnostic for the benchmark starter case.*
-
-The simulations are qualitatively consistent with transient mixed-phase parcel-model behaviour reported in the literature.
-
-In particular, the experiments reproduce:
-
-- persistent liquid water during transient ascent
-- gradual ice growth by vapour deposition
-- delayed Bergeron–Findeisen transition
-- weak vapour competition during short forcing periods
-- supersaturation over ice remaining larger than supersaturation over water
-
-These behaviours are physically consistent with previous mixed-phase parcel-model and KiD-style intercomparison studies, where transient dynamical forcing suppresses rapid ice dominance and prolongs liquid persistence.
-
----
-
-## 🧪 KiD Mixed-Phase Alignment Experiment
-
-This experiment represents an initial direct-alignment test with the KiD mixed-phase benchmark framework.
-
-The setup was configured using parameters inspired by the official KiD `mixed1.nml` case, including:
-
-- `dt = 1 s`
-- aerosol concentration ≈ `50 × 10^6 m^-3`
-- weak mixed-phase ascent forcing
-
-The simulation reproduces physically consistent mixed-phase behaviour:
-
-- gradual ice growth
-- persistent liquid water during early ascent
-- rapid liquid depletion during the Bergeron–Findeisen transition
-- strong vapour competition at later times
-
-These results demonstrate that the parcel model can reproduce benchmark-aligned mixed-phase cloud evolution and provide a foundation for future direct intercomparison studies with KiD.
-
-### Liquid and Ice Evolution
-
-![Case 4 Liquid and Ice](figures/case4_kid_mixed1_alignment_liquid_ice.png)
-
-### Supersaturation Evolution
-
-![Case 4 Supersaturation](figures/case4_kid_mixed1_alignment_supersaturation.png)
-
-### Threshold-Based Autoconversion Improvement
-
-A physically motivated threshold-based rain autoconversion scheme was introduced to improve alignment between the simplified Python parcel model and the KiD warm-cloud benchmark.
-
-The updated framework delays rain formation until cloud water exceeds a critical threshold, producing more realistic warm-rain evolution.
-
-### Error Reduction
-
-| Metric | Previous Model | Threshold-Based Model |
-|---|---|---|
-| Cloud RMSE | 0.3303 | 0.2399 |
-| Rain RMSE | 0.5378 | 0.3579 |
-| Cloud MAE | 0.2844 | 0.2058 |
-| Rain MAE | 0.4531 | 0.3031 |
-
-The introduction of threshold-based autoconversion significantly improves the agreement with the KiD benchmark, particularly for rain-water timing and overall cloud evolution.
-
-![Threshold Autoconversion](figures/case10_threshold_autoconversion.png)
-
-###  KiD-A Warm Cloud Benchmark (Fortran)
-
-The official KiD-A warm cloud benchmark was compiled and executed under Ubuntu WSL using Fortran and NetCDF libraries.
-
-### Compile the KiD-A model
-
-```bash
-make COMPILER=gfortran CASE=1D all
-
-```
-
-### Run the warm cloud benchmark
-
-```bash
-./bin/KiD_1D.exe namelists/warm1.nml output/warm1_output.nc
-
-```
-
-The simulation generates:
+Additional threshold diagnostics determine the time and supersaturation associated with:
 
 ```text
-output/warm1_output.nc
-
+1% activation
+50% activation
+90% activation
 ```
 
-which can be analysed using Python and NetCDF4.
+These diagnostics allow activation behaviour to be analysed quantitatively rather than only qualitatively.
 
 ---
 
-## ⚙️ Governing Equations
+# 🧪 Baseline Activation Experiment
 
-The parcel model is based on a physically consistent representation of vapour, liquid, and ice interactions in a rising air parcel.
-
-- **Supersaturation**
-
-Supersaturation is defined separately with respect to liquid water and ice:
-```
-Sw = (e − esat_water) / esat_water  
-Si = (e − esat_ice) / esat_ice
-```
-
-This separation allows liquid droplets and ice crystals to interact with the vapour field under distinct thermodynamic constraints.
-
-- **Vapour Budget**
-
-The total vapour tendency is decomposed into contributions from liquid condensation and ice deposition:
-```
-dqv/dt = (dqv/dt)_liq + (dqv/dt)_ice
-``` 
-
-where:
-
-(dqv/dt)_liq = − cond_rate  
-(dqv/dt)_ice = − dep_rate  
-
-This formulation enables explicit competition between liquid droplets and ice particles for available water vapour.
-
-- **Temperature Evolution**
-
-Temperature evolves due to adiabatic cooling and latent heat release:
-```
-dT/dt = − cooling_rate + (Lv / cp) · (dql/dt) + (Ls / cp) · (dqi/dt)
-```
-This coupling ensures thermodynamic consistency between microphysical growth and parcel evolution.
-
-- **Ice-Dominance Diagnostic**
-
-To quantify vapour competition, a diagnostic ratio is defined:
-```
-R = |dep_rate| / |cond_rate|
-```
-R < 1 → liquid-dominated regime  
-R ≥ 1 → ice-dominated regime  
-
-This diagnostic provides a quantitative measure of the transition to ice-dominated vapour depletion, consistent with the Bergeron–Findeisen process.
-
-- **Maxwell-Type Growth**
-
-Droplet and ice growth follow Maxwell-type diffusion-limited growth equations:
-```
- dr/dt = (G / r) S
-```
-
-where **G(T)** represents the combined effects of vapour diffusion and latent heat transport.
-
-- **Latent Heat Feedback**
-
-Condensation and deposition release latent heat, modifying parcel temperature through:
-```
-dT/dt = − cooling_rate + latent_heating
-```
-
-This ensures thermodynamic consistency between microphysics and parcel evolution.
-
----
-
-## 📊 Core Diagnostic
-
-The key quantity is:
-```
- R = |dep_rate| / |cond_rate|
-```
-Interpretation:
-
-| Regime | Meaning |
-|--------|-----------|
-| R < 1 | Liquid dominates |
-| R ≥ 1| Ice dominates |
-
-This provides a quantitative diagnostic for the onset of the **Bergeron–Findeisen process**.
-Under baseline aerosol and IN conditions, condensation remains the dominant vapour sink (**R < 1**).
-Sensitivity experiments demonstrate that:
-
-- increasing IN number  
-- decreasing CCN concentration  
-- increasing updraft velocity  
-
-can significantly increase **R**, strengthening vapour competition between droplets and ice.
-
----
-
-## Key Diagnostics
-
-These diagnostics illustrate vapour competition between liquid droplets and ice crystals in the parcel.
-
-The transition toward an ice-dominated regime is captured by the diagnostic ratio \(R = |dep\_rate| / |cond\_rate|\).
-
-### Supersaturation evolution
-
-![Supersaturation](figures/maxwell_S_vs_T.png)
-
-Supersaturation over water (Sw) stabilises after droplet activation, while supersaturation over ice (Si) continues to increase as temperature decreases.
-
-### Thermodynamic driver (Si − Sw)
-
-![Si minus Sw](figures/Si_minus_Sw_vs_T.png)
-
-As temperature decreases, Si exceeds Sw, creating a thermodynamic preference for vapour deposition onto ice.
-
-### Liquid and ice mass evolution
-
-![Mass evolution](figures/maxwell_q_vs_T.png)
-
-Liquid water increases rapidly after activation, while ice grows more gradually through vapour deposition.
-
-### Vapour competition (R vs time)
-
-![R ratio](figures/R_vs_time.png)
-
-The ratio \(R\) shows the transition from liquid-dominated (\(R < 1\)) to ice-dominated (\(R \geq 1\)) behaviour.
-
-### Sensitivity of the ice-dominated transition
-
-![Rmax heatmap](figures/Rmax_heatmap_CCN_IN.png)
-
-The maximum value of \(R\) depends on CCN and IN concentrations. Ice-dominated behaviour occurs only when IN concentration is sufficiently high.
-
-### Sensitivity of the ice-dominated regime
-
-![Rmax heatmap](figures/Rmax_heatmap_CCN_IN_boundary.png)
-
-The transition boundary (\(R = 1\)) separates liquid-dominated and ice-dominated regimes across the CCN–IN parameter space.
-
----
-
-## Case 1 — Warm-Rain Benchmark
-
-To evaluate the physical consistency of the parcel model, a warm-rain benchmark inspired by KiD Case 1 has been implemented.
-
-This configuration includes:
-
-- prescribed sinusoidal updraught forcing  
-- fixed temperature  
-- Köhler-based aerosol activation  
-- supersaturation over water from thermodynamic calculations  
-- Maxwell-type droplet growth  
-- warm-rain autoconversion and accretion  
-
-### Results
-
-![Cloud water mass](figures/kid_case1_cloud_mass.png)  
-*Cloud water mass evolution.*
-
-![Rain water mass](figures/kid_case1_rain_mass.png)  
-*Rain water mass evolution.*
-
-![Surface rain rate](figures/kid_case1_surface_rain_rate.png)  
-*Surface rain-rate evolution.*
-
-![Liquid water path](figures/kid_case1_lwp.png)  
-*Liquid water path evolution.*
-
-The model reproduces the expected qualitative behaviour of a warm-rain cloud system:
-
-- rapid cloud water growth during ascent  
-- peak cloud water followed by decay  
-- delayed rain formation  
-- gradual increase in surface rain rate
-  
-### Validation Metrics
-
-| Metric | Value |
-|--------|------|
-| Max cloud mass | 1.35 × 10⁻³ |
-| Time of max cloud | 296 s |
-| Max rain mass | 1.40 × 10⁻³ |
-| Rain onset time | 42 s |
-| Max rain rate | 6.99 × 10⁻³ |
-| Final cloud mass | ~0 |
-| Final rain mass | 1.40 × 10⁻³ |
-
-### Interpretation
-
-The model captures the essential warm-rain evolution:
-
-- rapid cloud development followed by depletion  
-- conversion of cloud water into rain  
-- rain dominance at late times  
-
-These results are consistent with KiD intercomparison behaviour.
-
-### Qualitative comparison with KiD-inspired benchmark
-
-| Diagnostic | Present model | Expected qualitative KiD behaviour |
-|---|---:|---|
-| Cloud water evolution | rises then decays | rises during ascent then decays |
-| Rain formation | ~42 s in this configuration | delayed rain formation |
-| Peak cloud mass | 1.35 × 10⁻³ kg/kg | comparable warm-rain peak behaviour |
-| Final cloud mass | ~0 | cloud water depleted by rain conversion |
-| Surface rain rate | increases gradually | rain rate increases after rain onset |
-
-The comparison confirms that the model captures the expected sequence of warm-rain processes observed in KiD intercomparison studies. While the agreement is primarily qualitative, the results provide confidence that the model reproduces the key physical behaviour of cloud water growth, delayed rain formation, and subsequent rain development.
-
-A fully quantitative comparison would require using the exact KiD reference setup and comparing against published KiD model outputs.
-
----
-
-## ❄️ Case 2 — Mixed-Phase Maxwell Growth
-
-A mixed-phase parcel experiment was performed using the Maxwell-growth framework, including:
-
-- coupled vapour evolution  
-- latent heating  
-- biological ice nucleation  
-
-This setup represents a system where liquid droplets and ice crystals compete for water vapour.
-
-### Results
-
-![Liquid and ice mass](figures/case2_from_maxwell_liquid_ice.png)  
-*Evolution of liquid water and ice mass.*
-
-![Supersaturation](figures/case2_from_maxwell_S.png)  
-*Supersaturation over water (Sw) and ice (Si).*
-
-![Vapour sinks](figures/case2_from_maxwell_sinks.png)  
-*Condensation vs deposition sinks.*
-
-![BF ratio](figures/case2_from_maxwell_R.png)  
-*Bergeron–Findeisen ratio.*
-
-### Physical Interpretation
-
-The simulation shows coexistence of liquid and ice:
-
-- supersaturation over ice (Si) > supersaturation over water (Sw)  
-- liquid grows rapidly after activation  
-- ice increases steadily via deposition  
-- condensation and deposition occur simultaneously  
-
-Ice growth is favoured because saturation vapour pressure over ice is lower than over liquid water.
-
-### Bergeron–Findeisen Transition
-
-The model captures a transition from:
-
-- liquid-dominated regime (R < 1)  
-- to ice-dominated regime (R ≥ 1)  
-
-This transition emerges naturally without parameter tuning.
-
-- transition time ≈ 1800 s  
-- final ratio R ≈ 11.57  
-
-As temperature decreases:
-
-- saturation over ice becomes lower  
-- vapour deposits onto ice  
-- droplet growth reduces Sw  
-
-### Validation Metrics
-
-| Metric | Value |
-|--------|-------|
-| Max liquid mass (qcloud) | 1.95 × 10⁻³ |
-| Max ice mass (qice) | 1.18 × 10⁻³ |
-| Ice onset time | 0 s |
-| Max Sw | 1.14 × 10⁻² |
-| Max Si | 3.83 × 10⁻¹ |
-| Max condensation sink | 1.72 × 10⁻⁶ |
-| Max deposition sink | 4.29 × 10⁻⁷ |
-| Final R | 11.57 |
-
-### Note
-
-An initial spike in the ratio R may occur due to very small condensation rates.  
-This is a numerical artefact and does not affect interpretation.
-
-### Key Insights
-
-- mixed-phase behaviour emerges naturally from thermodynamics  
-- vapour competition depends on Si vs Sw  
-- ice growth can occur even when condensation dominates  
-
-### 📌 Comparison between Case 1 and Case 2
-
-| Feature | Case 1: Warm-rain benchmark | Case 2: Mixed-phase Maxwell case |
-|---|---|---|
-| Main process | Liquid cloud growth and rain formation | Competition between liquid droplets and ice crystals |
-| Phase included | Liquid only | Liquid + ice |
-| Key behaviour | Cloud water increases, then decreases as rain forms | Liquid and ice coexist, then ice growth becomes increasingly important |
-| Vapour sink | Condensation dominates | Condensation initially dominates, then deposition becomes stronger |
-| Main diagnostic | Cloud mass, rain mass, rain rate | Supersaturation, vapour sinks, Bergeron–Findeisen ratio |
-| Scientific meaning | Reproduces warm-rain qualitative behaviour | Captures mixed-phase transition and vapour competition |
-
-This comparison shows that the model can reproduce two distinct cloud regimes. Case 1 captures the expected warm-rain evolution, while Case 2 extends the framework to mixed-phase conditions where liquid droplets and ice crystals compete for water vapour. The transition from condensation-dominated to deposition-dominated behaviour demonstrates that the model can represent the emergence of Bergeron–Findeisen-type behaviour without additional tuning.
-
-### Comparison with KiD-inspired setup
-
-| Component | Formal KiD / KiD-inspired setup | Current model | Next action |
-|---|---|---|---|
-| Model type | 1D kinematic cloud model used for microphysics intercomparison | 0D parcel model | State clearly that this is a simplified parcel analogue |
-| Updraft forcing | Prescribed kinematic forcing, often sinusoidal or time-dependent | Prescribed parcel updraft / cooling rate | Add a KiD-inspired time-dependent updraft option |
-| Warm-rain focus | Cloud water, rain water, rain rate, LWP | Warm-rain benchmark already included | Compare the same diagnostics |
-| Aerosol / droplet number | Fixed or prescribed aerosol/droplet number, e.g. warm-rain intercomparison cases | CCN activation and prescribed CCN sensitivity | Document CCN values clearly |
-| Microphysics | Warm-rain microphysics schemes compared under same forcing | Köhler activation, Maxwell growth, warm-rain process, mixed-phase extension | Separate warm-rain validation from mixed-phase extension |
-| Outputs | Cloud water, rain water, precipitation/rain rate, LWP | qcloud, qrain, rain rate, LWP, qice, R | Use common output names and figures |
-
----
-
-## 🌧️ Official KiD Warm Benchmark Test
-
-The official KiD 1-D warm-cloud benchmark case (`warm1.nml`) was successfully compiled and executed under Ubuntu/WSL using `gfortran`, `build-essential`, and NetCDF libraries.
-
-The simulation produced an official KiD NetCDF output file:
-
-`output/warm1_output.nc`
-
-The benchmark output shows realistic warm-cloud evolution, with rapid cloud-water growth followed by rain-water formation and gradual decay.
-
-This provides the first official KiD benchmark reference output for future direct comparison with the Python cloud parcel model.
-
-![KiD Warm Benchmark](figures/kid_warm1_comparison.png)
-
-*Figure: Official KiD warm-cloud benchmark showing cloud-water and rain-water evolution over time.*
-
----
-
-## 🌧️ Direct KiD Warm-Cloud Benchmark Alignment
-
-An improved warm-cloud alignment experiment was developed to directly compare the simplified Python parcel model against the official KiD warm-cloud benchmark.
-
-The alignment reproduces several key qualitative behaviours observed in the KiD reference simulation, including:
-
-- rapid cloud-water growth
-- delayed rain-water onset
-- gradual post-peak decay
-- realistic timing differences between cloud and rain evolution
-
-The comparison demonstrates that simplified parcel-model physics can qualitatively reproduce important warm-cloud microphysical behaviour under KiD-inspired forcing conditions.
-
-This provides an initial framework for future quantitative benchmarking between simplified parcel models and established cloud microphysics schemes.
-
-![Improved KiD Alignment](figures/case7_improved_warm_alignment.png)
-
-### Additional scripts
-
-Additional exploratory and sensitivity experiments are available:
-
-```bash
-python parcel_model/run_parcel_competition.py
-python parcel_model/run_bioIN_onset.py
-python parcel_model/run_mixed_phase_maxwell.py
-python run_mixed_phase_minimal.py
-python run_mixed_phase_updraft_sweep.py
-
-```
-
-These scripts investigate:
-
-- vapour competition between liquid and ice
-- biological ice nucleation onset
-- mixed-phase cloud evolution
-- sensitivity to updraft velocity
-- Maxwellian condensational growth
-  
----
-
-## Boundary-Condition Alignment
-
-The warm-cloud comparison was designed to align the simplified Python parcel model with the official KiD `warm1.nml` benchmark as closely as possible.
-
-The KiD benchmark uses:
-
-| Parameter | KiD warm1 setup | Python alignment |
-|---|---|---|
-| Case type | Warm cloud | Warm cloud |
-| Microphysics | Thompson09 | Simplified threshold autoconversion |
-| Updraft forcing | `wctrl(1) = 2.0 m/s` | Tuned around `w = 2.0 m/s` |
-| Aerosol concentration | `50 × 10^6 m^-3` | Normalised aerosol factor = `1.0` |
-| Simulation duration | `3600 s` | `3600 s` |
-| Output interval | `30 s` | KiD output time grid |
-| Rain conversion | Full KiD microphysics | Threshold-based autoconversion |
-
-This alignment does not imply identical microphysics. Instead, it provides a controlled comparison framework in which the simplified Python parcel model is evaluated against an established KiD benchmark under closely matched forcing and timing conditions.
-
----
-
-## Warm-Rain Model Improvements
-
-### Quantitative Comparison Summary
-
-| Metric | KiD Benchmark | Python Parcel Model |
-|---|---|---|
-| Cloud-water peak | 1.4334 | 1.1829 |
-| Rain-water peak | 0.4519 | 0.8320 |
-| Cloud peak time (s) | 570 | 1170 |
-| Rain peak time (s) | 930 | 3600 |
-
-The simplified Python parcel model reproduces the general warm-cloud evolution observed in the KiD benchmark, but important quantitative differences remain.
-
-In particular:
-- rain formation is delayed in the simplified model
-- rain-water production is overestimated
-- cloud evolution is temporally smoother than in the KiD simulation
-
-These differences are expected because the Python framework currently uses simplified warm-rain parameterisations compared with the full KiD microphysics scheme.
-
-### Error Metrics
-
-| Metric | Value |
-|---|---|
-| Cloud RMSE | 0.3303 |
-| Rain RMSE | 0.5378 |
-| Cloud MAE | 0.2844 |
-| Rain MAE | 0.4531 |
-
-The quantitative comparison indicates that the simplified Python parcel model captures the general warm-cloud evolution observed in the KiD benchmark, although significant differences remain in rain formation timing and precipitation intensity.
-
-The larger rain-related errors are expected because the simplified framework currently lacks detailed collision–coalescence and sedimentation physics.
-
----
-
-## Sensitivity Studies
-
-### Warm-Rain Threshold Sensitivity
-
-A sensitivity analysis was performed to investigate how the rain autoconversion threshold influences warm-cloud evolution and agreement with the KiD benchmark.
-
-Three threshold values were tested:
-
-- 0.35
-- 0.55
-- 0.75
-
-The results demonstrate that the autoconversion threshold strongly controls:
-
-- cloud-water persistence
-- timing of rain formation
-- post-peak cloud decay
-- overall benchmark agreement
-
-Lower thresholds trigger earlier rain conversion and more rapid cloud depletion, while larger thresholds delay rain formation and preserve cloud water for longer periods.
-
-The intermediate threshold (`0.55`) produced the closest qualitative agreement with the KiD warm-cloud benchmark.
-
-  ![Threshold Sensitivity](figures/case12_threshold_sensitivity.png)
-
-### Updraft Sensitivity
-
-A sensitivity analysis was performed to investigate how vertical velocity (`w`) influences warm-cloud evolution and benchmark agreement.
-
-Three updraft velocities were tested:
-
-- 1.0 m/s
-- 2.0 m/s
-- 4.0 m/s
-
-The simulations show that cloud-water growth is strongly controlled by parcel ascent rate.
-
-Stronger updrafts produce:
-
-- faster supersaturation generation
-- enhanced cloud-water growth
-- larger cloud-water peaks
-- delayed cloud depletion
-
-The intermediate forcing (`w = 2.0 m/s`) produced the closest agreement with the KiD warm-cloud benchmark.
-
-![Updraft Sensitivity](figures/case13_updraft_sensitivity.png)
-
-### Aerosol Sensitivity
-
-A sensitivity analysis was performed to investigate how aerosol loading influences warm-cloud development and benchmark agreement.
-
-Three aerosol scaling factors were tested:
-
-- 0.5
-- 1.0
-- 2.0
-
-The simulations show that aerosol concentration strongly affects cloud-water evolution.
-
-Larger aerosol loading produces:
-
-- enhanced cloud-water growth
-- larger cloud-water peaks
-- delayed cloud depletion
-- stronger persistence of condensate
-
-The intermediate aerosol factor (`1.0`) produced the closest agreement with the KiD warm-cloud benchmark.
-
-![Aerosol Sensitivity](figures/case14_aerosol_sensitivity.png)
-
-### Ice Nucleation Sensitivity
-
-A mixed-phase sensitivity analysis was performed to investigate how ice nucleation strength influences liquid-water depletion and ice growth.
-
-Three ice nucleation scaling factors were tested:
-
-- 0.5
-- 1.0
-- 2.0
-
-The simulations demonstrate strong sensitivity of mixed-phase evolution to ice nucleation intensity.
-
-Larger ice nucleation strength produces:
-
-- faster ice growth
-- enhanced liquid-water depletion
-- earlier phase transition
-- stronger ice dominance
-
-The experiments qualitatively reproduce the expected behaviour associated with vapour competition and Bergeron–Findeisen-type mixed-phase evolution.
-
-![Ice Sensitivity](figures/case15_ice_sensitivity.png)
-
----
-
-## Mixed-Phase Vapour Competition Diagnostic
-
-A vapour competition diagnostic (`R_BF`) was introduced to investigate the transition from liquid-dominated to ice-dominated mixed-phase evolution.
-
-The diagnostic is defined as:
+A representative baseline configuration uses:
 
 ```text
-R_BF = Ice Mass / Liquid Mass
+updraft velocity       = 1.0 m s^-1
+aerosol concentration  = 1.0e8 m^-3
+dry aerosol radius     = 0.05 micrometres
+geometric sigma        = 1.4
+kappa                   = 0.3
+timestep                = 0.25 s
 ```
 
-Values exceeding unity (`R_BF > 1`) indicate the emergence of ice-dominated behaviour associated with Bergeron–Findeisen-type vapour competition.
+For the `lognormal_kohler` parcel activation treatment, a representative run produced approximately:
 
-The simulations show a gradual transition toward ice dominance during the later stages of mixed-phase evolution.
+| Diagnostic | Value |
+|---|---:|
+| Saturation time | 94.25 s |
+| First activation time | 94.25 s |
+| 1% activation delay | 0.75 s |
+| 50% activation delay | 2.75 s |
+| 90% activation delay | 5.75 s |
+| Maximum supersaturation | 0.5399% |
+| Final activated fraction | 0.9947 |
+| Final Nc | 9.95 × 10^7 m^-3 |
+| Final qc | 2.88 × 10^-3 kg kg^-1 |
+| Mean droplet radius | 18.56 micrometres |
 
-![Vapour Competition](figures/case16_vapour_competition.png)
-
----
-
-## Discussion of Remaining Differences
-
-Although the simplified Python parcel model reproduces several key qualitative features of the KiD warm-cloud benchmark, important quantitative differences remain.
-
-The largest discrepancies are associated with:
-
-- delayed rain formation
-- smoother cloud evolution
-- overestimation or underestimation of condensate peaks
-- simplified temporal variability
-
-These differences are expected because the current framework intentionally uses simplified process representations.
-
-In contrast to the KiD benchmark microphysics scheme, the Python parcel model currently does not include:
-
-- detailed collision–coalescence physics
-- sedimentation feedbacks
-- turbulence coupling
-- spectral-bin microphysics
-- fully coupled thermodynamic feedbacks
-
-Nevertheless, the experiments demonstrate that simplified physically motivated parameterisations can reproduce important qualitative aspects of warm-cloud and mixed-phase evolution under KiD-inspired forcing conditions.
+These values are model diagnostics and should not be interpreted as validation against observations.
 
 ---
 
-## Literature Comparison and Current Interpretation
+# 🔬 Parameter-Sensitivity Experiments
 
-Recent investigation suggests that the early-time cloud liquid water content (LWC) behaviour in the Python parcel model is strongly influenced by the initial supersaturation state and aerosol activation timing.
+Systematic parameter sweeps have been implemented to investigate sensitivity to:
 
-Comparison with the KiD benchmark indicates that the Python model initially produced near-instantaneous activation due to supersaturation values substantially exceeding the aerosol critical supersaturation threshold.
+- updraft velocity, `w`;
+- aerosol number concentration, `N`;
+- dry aerosol radius;
+- aerosol hygroscopicity, `κ`.
 
-Additional sensitivity experiments reducing the initial water vapour mixing ratio produced a more gradual cloud onset, partially improving agreement with the KiD reference behaviour.
+The main diagnostic outputs include:
 
-These findings are broadly consistent with warm-cloud modelling studies such as:
-
-Porz et al. (2018),
-"A model for warm clouds with implicit droplet activation, avoiding saturation adjustment"
-
-which discuss the importance of supersaturation evolution and gradual droplet activation in realistic cloud development.
-
----
-
-## 🔬 Key Scientific Findings
-
-- Warm-rain evolution is qualitatively reproduced under KiD-inspired forcing conditions.
-- Mixed-phase coexistence emerges naturally from coupled thermodynamics and vapour competition.
-- Vapour competition is strongly controlled by the relationship between supersaturation over water (`Sw`) and supersaturation over ice (`Si`).
-- Ice growth is thermodynamically favoured during mixed-phase evolution.
-- Bergeron–Findeisen-type behaviour emerges without explicit transition tuning.
-- Dynamical forcing strongly influences vapour competition and phase partitioning.
-- Transient KiD-inspired forcing suppresses or delays the emergence of ice-dominated behaviour.
-- Supersaturation evolution alone does not determine ice dominance.
-- Mixed-phase cloud behaviour emerges naturally from physically based thermodynamics and diffusion-limited growth.
+- `SSmax`;
+- activation time;
+- activation delay;
+- activated fraction;
+- critical supersaturation;
+- mean droplet radius.
 
 ---
 
-## Numerical Stability Analysis
+## Aerosol Number Sensitivity
 
-### Stability Test Summary
+![SSmax versus aerosol concentration](data/two_moment_SSmax_vs_N_dt025.png)
 
-The model was tested across:
+*Maximum supersaturation as a function of aerosol number concentration.*
 
-- Updraft velocities: 1, 5, 10 m/s  
-- Timesteps: 0.1, 0.5, 1.0 s  
-- Initial ice radii: 1e-6, 5e-7, 1e-7 m  
+![Activated fraction versus aerosol concentration](data/two_moment_activated_fraction_vs_N_dt025.png)
 
-A total of 27 combinations were evaluated.
-All cases remained numerically stable. No NaN values, infinite values, negative radii, or supersaturation blow-up were observed.
+*Activated aerosol fraction as a function of aerosol number concentration.*
 
-### Representative Cases
+---
 
-| w (m/s) | dt (s) | r_init (m) | Status | Notes                  |
-|--------|--------|-----------|--------|------------------------|
-| 1      | 1.0    | 1e-6      | Stable | No onset               |
-| 5      | 0.5    | 5e-7      | Stable | Normal growth          |
-| 10     | 0.1    | 1e-7      | Stable | Extreme but stable     |
+## Dry Aerosol Radius Sensitivity
 
+The dry-radius sweep investigates how aerosol particle size changes critical supersaturation, activation timing, maximum supersaturation, and activated fraction.
 
-### Detailed Analysis
+---
 
-To further investigate the effect of timestep size, additional simulations were performed using larger timestep values (dt = 2, 5, and 10 s).
-All simulations remained numerically stable, with no evidence of divergence, oscillations, or instability.
+## Hygroscopicity Sensitivity
 
-### Stability Behaviour
+The κ sweep investigates how aerosol hygroscopicity changes the critical supersaturation and subsequent activation response.
 
-- No oscillations or numerical blow-up were detected.  
-- Ice growth remained physically consistent across all simulations.  
-- The onset of ice formation occurred at similar times for different timestep values.  
+---
 
-### Accuracy Considerations
+# ⏱️ Numerical Timestep Sensitivity
 
-While the model remains stable for large timesteps, small differences in the final ice radius were observed:
+A timestep-convergence experiment was performed before the main parameter sweeps.
 
-- Smaller timesteps (dt ≤ 0.1) produce nearly identical results.  
-- Larger timesteps (dt ≥ 1.0) introduce slight deviations.  
+A timestep of:
 
-This indicates that:
-
-- The model is numerically stable across a wide range of dt.  
-- The solution is converging as dt → 0.  
-- Larger timesteps slightly reduce accuracy but do not affect overall behaviour.  
-
-### Practical Implications
-
-These results suggest that:
-
-- The model can be run with relatively large timesteps to reduce computational cost.  
-- A timestep of dt ≈ 0.1–1.0 s provides a good balance between accuracy and efficiency.  
-
-### Sensitivity to Timestep (dt)
-
-  ![Timestep sensitivity](figures/figure_dt_sensitivity.png)
-The figure below shows the variation of the final ice radius as a function of timestep size.
-
-This plot confirms that:
-
-- The solution converges as dt decreases.
-- The variation in final ice radius remains small.
-- The model remains stable across the tested timestep range.
-  
-### Interpretation
-
-The results show that the final ice radius converges as the timestep decreases.
-
-For timesteps larger than 1 s, the solution becomes nearly constant, indicating numerical stability and low sensitivity to further increases in timestep.
-
-This suggests that using dt ≈ 1 s provides a good compromise between computational efficiency and accuracy.
-
-### Breakdown at large timesteps
-
-To further investigate the robustness of the model, larger timestep values were tested (dt = 20, 50, and 100 s).
-
-The simulations failed for these cases:
-
-- dt = 20 s → Overflow error
-- dt = 50 s → Division by zero
-- dt = 100 s → Division by zero
-
-This indicates that the numerical scheme becomes unstable for sufficiently large timesteps. The failure is likely due to large temperature changes within a single timestep, leading to non-physical values and numerical breakdown.
-
-Therefore, while the model is stable for dt ≤ 10 s, there is a clear upper limit beyond which the results are no longer reliable.
-
-### Reproducibility
-
-All results can be reproduced by running:
-
-```bash
-python run_stability_test.py
-
+```text
+dt = 0.25 s
 ```
-The output summary is saved in:
 
-```bash
-data/stability_results.csv
+was selected for the main sensitivity experiments, with:
 
+```text
+dt = 0.10 s
 ```
----
 
-## ⚙️ Numerical Method
+used as a finer numerical reference.
 
-- Time integration: explicit time stepping
-- Fixed timestep (dt)
-- Coupled evolution of temperature, vapour, liquid, and ice
-- Latent heat feedback included
-- Numerical stability controlled via timestep selection
-
-## 📏 Units
-
-All variables in this model use **SI units** to ensure physical consistency.
-
-### Thermodynamic variables
-- Temperature: **Kelvin (K)**
-- Pressure: **Pascal (Pa)**
-- Water vapour mixing ratio: **kg/kg**
-
-### Microphysical variables
-- Droplet / ice radius: **meters (m)**
-- Liquid water content: **kg/kg**
-- Ice water content: **kg/kg**
-
-### Dynamical variables
-- Vertical velocity (updraft): **m/s**
-- Time: **seconds (s)**
-
-### Aerosol properties
-- CCN concentration: **m⁻³**
-- IN concentration: **m⁻³**
-
-### Diagnostic quantities
-- Supersaturation (Sw, Si): **dimensionless**
-- Vapour competition ratio (R): **dimensionless**
+Numerical convergence is distinct from physical validation.
 
 ---
 
-## ⚠️ Limitations
+# 📚 Independent ARG1998 Analytical Benchmark
 
-- Zero-dimensional parcel (no spatial variability)
-- No turbulence or entrainment
-- Simplified ice nucleation parameterisation
-- Single-moment microphysics
-  
+The parcel activation calculation is compared with an independent implementation based on:
+
+**Abdul-Razzak, Ghan & Rivera-Carpio (1998)**  
+*A parameterization of aerosol activation: 1. Single aerosol type.*
+
+The analytical calculation is used as a **standalone analytical benchmark**, not as the parcel activation algorithm itself.
+
+For the representative baseline experiment:
+
+```text
+lognormal threshold parcel SSmax ≈ 0.5399%
+ARG1998 analytical SSmax         ≈ 0.5718%
+
+lognormal threshold parcel activated fraction ≈ 0.9947
+ARG1998 analytical activated fraction         ≈ 0.9962
+```
+
+The parcel `lognormal_kohler` treatment and the ARG1998 analytical parameterization are distinct activation closures.
+
+Therefore, differences between them should not automatically be interpreted as model errors or validation errors.
+
+No coefficients are tuned simply to force agreement with the analytical benchmark.
+
+The current ARG1998 benchmark also contains provisional assumptions, including the representative droplet radius used in the condensational-growth coefficient.
+
 ---
 
-## 📁 Repository Structure
+# 🌧️ KiD-A Warm1 Investigation
 
-The project is organised to clearly separate model physics, experiments, diagnostics, and outputs.
+The KiD-A `warm1` configuration was used for an external diagnostic comparison.
+
+Important configuration information identified from the KiD namelist and source includes:
+
+```text
+case                 = warm1 (icase = 101)
+microphysics scheme  = Thompson09
+maximum updraft      = 2.0 m s^-1
+forcing duration     = 600 s
+aerosol N            = 50 × 10^6 m^-3
+aerosol dry radius   = 0.05 micrometres
+geometric sigma      = 1.4
+KiD timestep         = 1.0 s
+output interval      = 30 s
+```
+
+The KiD configuration also contains a fixed cloud-number setting:
+
+```text
+SET_NC = 100 cm^-3
+```
+
+This fixed cloud-number closure and the initialized aerosol population are separate quantities and should not be treated as equivalent.
+
+---
+
+## Warm1 Vertical-Velocity Forcing
+
+During the first 600 s, the warm1 forcing follows:
+
+```math
+w(t)=2\sin\left(\frac{\pi t}{600}\right)
+```
+
+with zero vertical velocity after the forcing period.
+
+For a parcel beginning at approximately 25 m, the corresponding analytical displacement during the forcing period is:
+
+```math
+z(t)=25+
+\frac{1200}{\pi}
+\left[
+1-\cos\left(\frac{\pi t}{600}\right)
+\right]
+```
+
+The final height after the forcing period is approximately:
+
+```text
+788.94 m
+```
+
+---
+
+# ☁️ Matched Python Warm1 Parcel Experiment
+
+A dedicated Python runner was created to reproduce the KiD warm1 vertical-velocity forcing while retaining the two-moment parcel microphysics.
+
+The approximate initial state extracted from the first available KiD output was:
+
+```text
+T0 ≈ 297.665 K
+p0 ≈ 99724 Pa
+qv0 ≈ 0.0149595 kg kg^-1
+z0 = 25 m
+```
+
+The Python experiment used:
+
+```text
+activation scheme = lognormal_kohler
+aerosol N         = 50 × 10^6 m^-3
+dry radius        = 0.05 micrometres
+sigma             = 1.4
+kappa             = 0.3
+dt                = 0.25 s
+```
+
+Representative diagnostics were:
+
+```text
+first saturation       ≈ 396.5 s
+first activation       ≈ 396.5 s
+saturation height      ≈ 591.9 m
+SSmax                  ≈ 0.992%
+final activated fraction ≈ 0.99994
+```
+
+The first resolved cloud along the extracted KiD trajectory appears between approximately 390 and 420 s.
+
+This timing agreement is useful diagnostically, but it is **not physical validation**.
+
+---
+
+# 📈 Direct KiD–Python Parcel Comparison
+
+A trajectory was reconstructed through the KiD `warm1` output and compared with the Python two-moment parcel.
+
+Before cloud formation, temperature and water-vapour differences were relatively small.
+
+After condensation began, the solutions diverged substantially.
+
+At approximately 600 s:
+
+| Quantity | KiD trajectory | Original Python parcel |
+|---|---:|---:|
+| Temperature | 290.442 K | 291.294 K |
+| qv | 0.0137716 kg kg^-1 | 0.0145203 kg kg^-1 |
+| Cloud water | 0.0010995 kg kg^-1 | 0.0004391 kg kg^-1 |
+
+KiD also contains approximately:
+
+```text
+rain water ≈ 9.92 × 10^-5 kg kg^-1
+```
+
+at this point.
+
+The original Python parcel therefore contains substantially less condensed water than the KiD trajectory.
+
+However, this direct discrepancy should **not** be interpreted automatically as a microphysics validation failure because the two experiments do not use equivalent thermodynamic and dynamical frameworks.
+
+---
+
+# 🔍 Source-Level Diagnosis of the KiD Comparison
+
+Inspection of the KiD `warm1` namelist and source code identified two important settings:
+
+```text
+L_FIX_THETA = True
+L_PUPDATE   = False
+```
+
+With `L_FIX_THETA=True`, the KiD warm1 case does not prognostically accumulate the microphysical potential-temperature tendency in the same way as the Lagrangian Python parcel accumulates latent-heating feedback.
+
+With `L_PUPDATE=False`, KiD does not perform the optional timestep pressure/Exner update.
+
+The Python parcel, in contrast, follows a Lagrangian thermodynamic trajectory with dynamically evolving parcel pressure and persistent latent-heating feedback.
+
+The two experiments are therefore **not thermodynamically equivalent**.
+
+This is an important result because it means that tuning aerosol activation, cloud number, or the Maxwell condensational-growth coefficient simply to reproduce the direct KiD cloud-water curve would not be scientifically justified.
+
+---
+
+# 💧 Thompson09 Condensation Diagnosis
+
+Inspection of the Thompson09 source shows that cloud condensation/evaporation is treated using a Newton-iteration saturation-adjustment-like calculation.
+
+The Thompson condensation calculation directly adjusts:
+
+```text
+qv
+cloud water
+temperature
+```
+
+towards water saturation.
+
+The fixed cloud number `Nt_c` does not directly appear in this condensation adjustment.
+
+This differs structurally from the explicit Maxwell droplet-growth treatment used in the Python parcel.
+
+However, an additional Python saturation-adjustment experiment showed that replacing Maxwell growth alone did **not** remove the large final condensed-water difference.
+
+Therefore, the condensational-growth closure alone is unlikely to be the dominant explanation for the original direct KiD–parcel discrepancy.
+
+---
+
+# 🧭 Fixed-Environment KiD Diagnostic
+
+A separate diagnostic experiment was developed to isolate the thermodynamic-framework difference.
+
+This experiment follows the warm1 vertical trajectory but uses:
+
+- the RICO potential-temperature profile;
+- fixed hydrostatic Exner/pressure;
+- fixed-environment temperature;
+- positive-supersaturation adjustment;
+- no persistent parcel latent-heating feedback.
+
+This experiment is deliberately a **diagnostic calculation**, not a replacement for the two-moment model and not a validation experiment.
+
+At approximately 600 s:
+
+| Quantity | Fixed-environment Python | KiD trajectory |
+|---|---:|---:|
+| Temperature | 290.471 K | 290.442 K |
+| qv | 0.0137698 kg kg^-1 | 0.0137716 kg kg^-1 |
+| Total condensed water | 0.0011897 kg kg^-1 | 0.0011987 kg kg^-1 |
+
+The final condensed-water difference is less than approximately 1%.
+
+At approximately 570 s, the fixed-environment condensed water also differs from KiD by less than approximately 1%.
+
+The early-cloud period shows larger relative differences, partly because the absolute condensed-water values are still small and the KiD trajectory is sampled from discrete model output levels and times.
+
+The close final thermodynamic and total-condensed-water agreement strongly supports the diagnosis that the original discrepancy was dominated by differences in the thermodynamic/dynamical framework.
+
+It does **not** constitute validation of the two-moment microphysics.
+
+---
+
+# 💧 Condensation-Closure Diagnostic
+
+A second diagnostic experiment replaced explicit Maxwell growth with positive-supersaturation adjustment while retaining the original Lagrangian parcel thermodynamics.
+
+The final cloud-water mixing ratio changed by less than approximately 0.2%.
+
+This provides evidence that simply replacing the Maxwell growth treatment is insufficient to explain the much larger original KiD–parcel discrepancy.
+
+It also demonstrates why model coefficients should not be tuned before ensuring that the compared dynamical and thermodynamic frameworks are equivalent.
+
+---
+
+# 🧮 Water Conservation
+
+The warm-cloud parcel experiments explicitly monitor total water.
+
+For the current vapour-plus-cloud system:
+
+```text
+q_total = qv + qc
+```
+
+Representative simulations conserve total water to numerical precision when no external water source or sink is included.
+
+This provides an important numerical consistency check.
+
+Water conservation alone does **not** establish physical validation.
+
+---
+
+# ✅ Automated Tests
+
+The two-moment development includes automated tests for:
+
+- moment consistency;
+- water conservation;
+- activation limits;
+- activation threshold diagnostics;
+- runner behaviour;
+- thermodynamic state validity;
+- numerical invariants;
+- legacy activation-scheme compatibility.
+
+The latest checked development state passes:
+
+```text
+33 tests
+```
+
+These tests provide evidence of software and numerical consistency.
+
+They should **not** be described as physical validation.
+
+---
+
+# ▶️ Reproducing the Main Experiments
+
+The principal runners are located in:
+
+```text
+parcel_model/
+```
+
+Examples include:
+
+```text
+run_two_moment_warm.py
+run_two_moment_kid_warm1.py
+run_two_moment_kid_warm1_saturation_adjustment.py
+run_two_moment_kid_warm1_fixed_environment.py
+extract_kid_warm1_trajectory.py
+save_two_moment_kid_warm1_trajectory.py
+compare_kid_python_warm1.py
+```
+
+Parameter-sweep and diagnostic scripts are also stored within the repository.
+
+Before reproducing an experiment, inspect the runner configuration so that timestep, activation scheme, aerosol properties, thermodynamic assumptions, and forcing options are explicitly documented.
+
+---
+
+# 📁 Key Project Structure
 
 ```text
 python-cloud-model/
-├── parcel_model/                    # core parcel microphysics modules
-│   ├── aerosol.py                   # aerosol population definitions
-│   ├── activation.py                # Köhler-based droplet activation
-│   ├── thermodynamics.py            # saturation and supersaturation calculations
-│   ├── biological_in.py             # biological ice nucleation parameterisation
-│   └── run_mixed_phase_maxwell.py   # mixed-phase parcel model driver
+├── parcel_model/
+│   ├── two_moment_warm.py
+│   ├── run_two_moment_warm.py
+│   ├── run_two_moment_kid_warm1.py
+│   ├── run_two_moment_kid_warm1_saturation_adjustment.py
+│   ├── run_two_moment_kid_warm1_fixed_environment.py
+│   ├── extract_kid_warm1_trajectory.py
+│   ├── save_two_moment_kid_warm1_trajectory.py
+│   └── compare_kid_python_warm1.py
 │
-├── cases/         # configuration files for different cases
-│    ├── case1_config.py
-│    ├──  kid_forcing.py
-│    └──  kid_inspired_forcing.py
-│ 
-├── experiments/         # experiment scripts
-│   ├── run_stability_test.py
-│   ├── run_kid_case1.py   # KiD Case 1 warm-rain benchmark experiment
-│   ├── run_case2_from_maxwell.py
-│   ├── extract_validation_metrics.py
-│   └── run_kid_inspired_alignment.py
+├── data/
+│   ├── model output
+│   ├── parameter-sweep results
+│   └── diagnostic figures
 │
-│
-├── plotting/            # plotting and diagnostics
-│   ├── plot_R_ratio.py
-│   ├── plot_mixed_phase_growth.py
-│   ├── plot_Si_minus_Sw.py
-│   ├── plot_kid_case1.py            # plots for KiD Case 1 benchmark
-│   ├── plot_case2_from_maxwell.py   #  plots Case 2 Bergeron-Findeisen transition reproduced
-│   └── plot_kid_inspired_alignment.py
-│
-│
-├── data/                # simulation outputs and stability results
-│   └── stability_results.csv
-│
-├── data/                # simulation outputs (CSV files)
-├── figures/            # generated figures
-│   ├── maxwell_S_vs_T.png
-│   ├── maxwell_q_vs_T.png
-│   ├── R_vs_time.png
-│   ├── Si_minus_Sw_vs_T.png
-│   ├── Rmax_heatmap_CCN_IN_boundary.png
-│   ├── kid_case1_cloud_mass.png
-│   ├── kid_case1_rain_mass.png
-│   ├── kid_case1_surface_rain_rate.png
-│   ├── kid_case1_lwp.png
-│   ├── case2_from_maxwell_liquid_ice.png
-│   ├── case2_from_maxwell_S.png
-│   ├── case2_from_maxwell_sinks.png
-│   ├── case2_from_maxwell_R.png
-│   └── kid_warm1_comparison.png
-│
-│
-├── KiD-A/                           # official KiD benchmark model (Fortran)
-│
-├── README.md
-├── requirements.txt
-└── .gitignore
-
-```
----
-
-##  Key Insight
-
-### Core model (parcel physics)
-
-- **parcel_model/aerosol.py** — aerosol population definitions  
-
-- **parcel_model/activation.py** — Köhler-based aerosol activation  
-
-- **parcel_model/thermodynamics.py** — saturation vapour pressure and supersaturation calculations (Sw, Si)  
-
-- **parcel_model/biological_in.py** — temperature-dependent biological ice nucleation scheme  
-
-- **parcel_model/run_mixed_phase_maxwell.py** — physically based mixed-phase parcel model with Maxwell growth and latent heat feedback
-
-### Experiments
-
-- **experiments/run_R_sweep.py** — sensitivity of vapour competition across parameter space  
-
-- **experiments/run_R_w_sweep.py** — sensitivity of vapour competition to updraft velocity  
-
-- **experiments/run_mixed_phase_updraft_sweep.py** — mixed-phase evolution under varying dynamical forcing
-
-- **experiments/run_kid_case1.py** — warm-rain benchmark inspired by KiD Case 1
-
-### Diagnostics and plotting
-
-- **plotting/plot_R_ratio.py** — Bergeron–Findeisen diagnostic \(R = |dep\_rate| / |cond\_rate|\)  
-
-- **plotting/plot_Si_minus_Sw.py** — thermodynamic driver of vapour transfer (Si − Sw)  
-
-- **plotting/plot_mixed_phase_growth.py** — evolution of liquid and ice mass
-
-- **plotting/plot_kid_case1.py** — diagnostic plots for KiD Case 1 benchmark  
-
-### Outputs
-
-- **data/** — simulation outputs (CSV time series)  
-
-- **figures/** — generated figures for diagnostics and analysis
-  
----
-
-## ⚙️ Installation
-
-### ⚡ Quick Start
-
-Clone the repository and run a simulation in minutes:
-
-```bash
-git clone https://github.com/paultgriffiths/python-cloud-model.git
-cd python-cloud-model
-
+├── tests and development checks
+├── MANUSCRIPT.md
+└── README.md
 ```
 
-### Requirements
-
-- Python >= 3.9
-- Recommended: virtual environment
-
-### 1. Create and activate a virtual environment
-Create the environment:
-```bash
-python -m venv venv
-
-```
-Activate on Linux / macOS:
-```bash
-source venv/bin/activate
-
-```
-Activate on Windows (PowerShell / CMD):
-```bash
-venv\Scripts\activate
-
-```
-### 2. Install dependencies
-```bash
-pip install -r requirements.txt
-
-```
-If needed, you can also install manually:
-```bash
-pip install numpy scipy matplotlib pandas
-
-```
----
-
-##  Run simulations
-
-Run the main validated experiments:
-
-#### Warm-rain benchmark (KiD-inspired)
-```bash
-python experiments/run_kid_case1.py
-
-```
-
-#### Mixed-phase cloud (Maxwell growth)
-```bash
-python experiments/run_case2_from_maxwell.py
-
-```
----
-
-## Generating Diagnostic Figures
-
-Generate diagnostic figures using:
-
-```bash
-python plotting/plot_kid_case1.py
-python plotting/plot_case2_from_maxwell.py
-python plotting/plot_R_ratio.py
-python plotting/plot_Si_minus_Sw.py
-
-```
-
-These diagnostics illustrate:
-
-- supersaturation evolution (`Sw` and `Si`)
-- liquid and ice condensational growth
-- vapour competition between condensation and deposition
-- warm-rain and mixed-phase cloud evolution
-- thermodynamic phase transitions
+The exact repository contents continue to evolve as the model is developed.
 
 ---
 
-## Technologies
+# ❄️ Earlier Mixed-Phase Development
 
-- Python
-- Fortran
-- NetCDF4
-- Matplotlib
-- Ubuntu WSL
-- Git/GitHub
-  
----
+The repository also contains earlier exploratory work on:
 
-## Planned Developments
+- biological ice nucleation;
+- mixed-phase Maxwell growth;
+- vapour competition;
+- Bergeron–Findeisen-type behaviour;
+- warm-rain autoconversion;
+- KiD-inspired forcing experiments.
 
-Future extensions of the model include:
+These experiments remain useful as exploratory model-development work.
 
-- mixed-phase cloud simulations
-- comparison with laboratory observations
-- sensitivity analysis of microphysics schemes
-- automated visualisation workflows
+The current development focus is the **warm-cloud two-moment framework and quantitative aerosol-activation diagnostics**.
 
 ---
 
-⚠️ This repository is a research-oriented prototype intended for physical insight and conceptual exploration rather than operational forecasting.
+# 🔬 Current Scientific Interpretation
+
+The present development supports the following conclusions:
+
+1. A provisional warm-cloud two-moment framework with prognostic `Nc` and `qc` is operational.
+2. Aerosol activation is evaluated using quantitative timing, fraction, and supersaturation diagnostics.
+3. Updraft and aerosol properties produce measurable changes in activation behaviour.
+4. Numerical timestep sensitivity has been explicitly assessed.
+5. The `lognormal_kohler` parcel threshold treatment is not the full ARG1998 analytical activation parameterization.
+6. ARG1998 is used as an independent analytical benchmark.
+7. Differences between the parcel threshold treatment and ARG1998 should not automatically be interpreted as validation errors.
+8. The original direct KiD warm1 discrepancy cannot be attributed to condensational-growth physics alone.
+9. The KiD warm1 and original Python parcel experiments use different thermodynamic/dynamical frameworks.
+10. A fixed-environment diagnostic reproduces KiD warm1 thermodynamics and total condensed water much more closely.
+11. Further controlled comparisons with genuinely equivalent dynamics and thermodynamics are required before the two-moment scheme can be described as validated.
 
 ---
 
-## 📚 References
+# ⚠️ Limitations
 
-- Porz, N., et al. (2018)."A model for warm clouds with implicit droplet activation, avoiding saturation adjustment." Atmospheric Chemistry and Physics.
+The current two-moment framework remains intentionally simplified.
 
-- Journal of the Atmospheric Sciences (2022).Warm-cloud and supersaturation evolution studies.https://journals.ametsoc.org/view/journals/atsc/79/9/JAS-D-22-0010.1.xml
+Important limitations include:
 
-- Atmospheric Chemistry and Physics (2024).Cloud microphysics and activation sensitivity analysis.https://acp.copernicus.org/articles/24/11653/2024/
+- simplified aerosol activation treatments;
+- monodisperse/equivalent-radius representation of cloud droplets;
+- no fully prognostic aerosol size distribution;
+- no complete two-moment rain category in the new warm-cloud framework;
+- no detailed collision-coalescence treatment equivalent to Thompson09;
+- no sedimentation in the basic parcel two-moment model;
+- no turbulence or entrainment;
+- differences between Lagrangian parcel and Eulerian KiD dynamics;
+- timestep-resolved activation threshold crossings;
+- provisional assumptions within the independent ARG1998 benchmark.
 
-- Pruppacher, H. R., and Klett, J. D. (1997). *Microphysics of Clouds and Precipitation*. Springer.
+The model is therefore intended for:
 
-- Morrison, H., Curry, J. A., and Khvorostyanov, V. I. (2005). *A New Double-Moment Microphysics Parameterization for Application in Cloud and Climate Models. Part I: Description*. Journal of the Atmospheric Sciences, 62(6), 1665–1677.
+```text
+research development
+process diagnosis
+controlled sensitivity experiments
+numerical testing
+```
 
-- Grabowski, W. W. (2015). *Untangling microphysical impacts on deep convection applying a novel modeling methodology*. Journal of the Atmospheric Sciences, 72(6), 2446–2467.
+rather than operational cloud prediction.
 
-- Rogers, R. R., and Yau, M. K. (1989). *A Short Course in Cloud Physics*. Pergamon Press.
-
-- Köhler, H. (1936). *The nucleus in and the growth of hygroscopic droplets*. Transactions of the Faraday Society, 32, 1152–1161.
-
-- KiD (Kinematic Driver) intercomparison framework for cloud microphysics studies: https://github.com/Adehill/KiD-A.
-  
 ---
 
-## Project Status
+# 🚧 Repository Status
 
-This repository contains a research-oriented prototype developed for physical process exploration, conceptual modelling, and hypothesis generation.
+The current implementation should be described as:
 
-It is not intended for operational weather forecasting or climate prediction applications.
+> **Experimental warm-cloud two-moment research prototype under development and diagnostic evaluation.**
+
+It should **not** yet be described as a validated microphysics scheme.
+
+The principal current development priorities are:
+
+1. further controlled activation tests;
+2. clearer process-level comparison with KiD;
+3. comparison under genuinely equivalent thermodynamic forcing;
+4. continued sensitivity analysis;
+5. literature-based evaluation without empirical tuning;
+6. documentation of every model option used in comparison experiments.
 
 ---
 
-## Citation
+# 📚 References
 
-If you use this repository in research or educational work, please cite the project appropriately.
+Abdul-Razzak, H., Ghan, S. J., & Rivera-Carpio, C. (1998).  
+*A parameterization of aerosol activation: 1. Single aerosol type.*  
+Journal of Geophysical Research, 103(D6), 6123–6131.  
+DOI: 10.1029/97JD03735.
 
-A DOI and formal citation entry will be provided following a future Zenodo release.
+Abdul-Razzak, H., & Ghan, S. J. (2000).  
+*A parameterization of aerosol activation: 2. Multiple aerosol types.*  
+Journal of Geophysical Research, 105(D5), 6837–6844.
 
+Abdul-Razzak, H., & Ghan, S. J. (2002).  
+*A parameterization of aerosol activation: 3. Sectional representation.*  
+Journal of Geophysical Research.
 
+Ghan, S. J., et al. (2011).  
+Droplet nucleation: physically based parameterizations and comparative evaluation.  
+Journal of Advances in Modeling Earth Systems.
 
+Köhler, H. (1936).  
+*The nucleus in and the growth of hygroscopic droplets.*  
+Transactions of the Faraday Society, 32, 1152–1161.
 
+Pruppacher, H. R., & Klett, J. D. (1997).  
+*Microphysics of Clouds and Precipitation.*  
+Springer.
 
+---
 
+# 👩‍🔬 Author
 
+**Dr Yaktine Elyamani**
 
+Research interests include atmospheric modelling, cloud microphysics, physical chemistry, thermodynamics, and scientific computing.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+This repository documents ongoing model development and is intended to maintain a transparent record of assumptions, diagnostics, numerical experiments, and comparison work.
